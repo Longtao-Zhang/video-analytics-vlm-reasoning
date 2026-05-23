@@ -1,0 +1,22 @@
+# Do not git viedes, weights and outputs ect. to GitHub
+__pycache__/
+*.pyc
+
+.env
+.venv/
+venv/
+
+.DS_Store
+Thumbs.db
+
+examples/outputs/
+outputs/
+
+examples/input_videos/*.mp4
+examples/input_videos/*.avi
+examples/input_videos/*.mov
+examples/input_videos/*.mkv
+
+*.pt
+*.pth
+*.onnx
