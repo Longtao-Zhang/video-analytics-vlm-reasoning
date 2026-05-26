@@ -26,8 +26,8 @@ Input Video
 
 - [x] Project structure
 - [x] GitHub repository setup
-- [ ] Video metadata extraction
-- [ ] Frame sampling
+- [x] Video metadata extraction
+- [x] Frame sampling
 - [ ] Object detection
 - [ ] Temporal aggregation
 - [ ] Event generation
