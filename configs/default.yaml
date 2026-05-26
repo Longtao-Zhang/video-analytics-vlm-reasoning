@@ -1,0 +1,8 @@
+video:
+  sample_fps: 1.0
+  output_dir: "examples/outputs"
+
+sampling:
+  strategy: "fixed_fps"
+  save_images: true
+  image_format: "jpg"
