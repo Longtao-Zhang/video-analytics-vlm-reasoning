@@ -6,3 +6,16 @@ sampling:
   strategy: "fixed_fps"
   save_images: true
   image_format: "jpg"
+
+detection:
+  model_name: "yolov8n.pt"
+  confidence_threshold: 0.4
+  target_classes:
+    - person
+    - tree
+    - car
+    - bicycle
+    - bus
+    - motorcycle
+    - truck
+    
