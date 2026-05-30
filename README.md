@@ -28,7 +28,7 @@ Input Video
 - [x] GitHub repository setup
 - [x] Video metadata extraction
 - [x] Frame sampling
-- [ ] Object detection
+- [x] Object detection
 - [ ] Temporal aggregation
 - [ ] Event generation
 - [ ] VLM-assisted reasoning
@@ -116,3 +116,32 @@ Coming soon.
 - Testing and refactoring
 - Resume and interview preparation
 - Project polish
+
+## Upadate
+
+### Object Detection
+
+This project uses YOLO for frame
+This project uses YOLO for frame-level object detection on sampled video frames.
+
+```bash
+python -m src.detector \
+  --sampled-frames-json examples/outputs/demo/sampled_frames.json \
+  --config configs/default.yaml \
+  --output examples/outputs/demo
+```
+The detector outputs:
+
+```bash
+examples/outputs/demo/
+├── detections.json
+└── visualized_frames/
+```
+
+Each detection contains:
+```bash
+{
+  "label": "person",
+  "confidence": 0.91,
+  "bbox_xyxy": [120.5, 80.2, 300.7, 420.9]
+}

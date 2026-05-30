@@ -1,5 +1,5 @@
 video:
-  sample_fps: 1.0
+  sample_fps: 0.5
   output_dir: "examples/outputs"
 
 sampling:
@@ -12,10 +12,10 @@ detection:
   confidence_threshold: 0.4
   target_classes:
     - person
-    - tree
+    # - tree
     - car
     - bicycle
     - bus
-    - motorcycle
+    # - motorcycle
     - truck
     
