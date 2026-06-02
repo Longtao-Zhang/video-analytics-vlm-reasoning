@@ -1,3 +1,12 @@
+"""Run a YOLO (Ultralytics) detector on sampled frames.
+
+Run:
+    python -m src.detector --sampled-frames-json <sampled_frames.json> \\
+        --config <config.yaml> --output <dir>
+Writes detections to ``<output>/detections.json`` and annotated images to
+``<output>/visualized_frames/``. Model and thresholds come from the config's
+``detection`` section.
+"""
 from __future__ import annotations
 
 import argparse

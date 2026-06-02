@@ -20,3 +20,5 @@ examples/input_videos/*.mkv
 *.pt
 *.pth
 *.onnx
+
+docs/memo.md

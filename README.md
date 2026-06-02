@@ -83,15 +83,21 @@ systems:
 
 ## Setup
 
+**Windows (PowerShell):**
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-## Usage
+**macOS / Linux (bash):**
 
-Coming soon.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
 ## Roadmap
 
@@ -117,11 +123,23 @@ Coming soon.
 - Resume and interview preparation
 - Project polish
 
-## Upadate
+## Usage
+
+### Video Metadata Extraction
+```bash
+python -m src.video_loader --video examples/input_videos/video.mp4 \
+--output examples/outputs/demo
+```
+
+### Frame Sampling
+```bash
+python -m src.frame_sampler --video examples/input_videos/demo.mp4 \
+--config configs/default.yaml \
+--output examples/outputs/demo
+```
 
 ### Object Detection
 
-This project uses YOLO for frame
 This project uses YOLO for frame-level object detection on sampled video frames.
 
 ```bash
@@ -132,16 +150,26 @@ python -m src.detector \
 ```
 The detector outputs:
 
-```bash
+```text
 examples/outputs/demo/
 ├── detections.json
 └── visualized_frames/
 ```
 
 Each detection contains:
-```bash
+```json
 {
   "label": "person",
   "confidence": 0.91,
   "bbox_xyxy": [120.5, 80.2, 300.7, 420.9]
 }
+```
+
+### Temporal Aggregation
+Converts frame-level YOLO detections into object presence segments.    
+```bash
+python -m src.temporal_aggregator \
+--detection-json example/output/demo/detection.json \
+--config configs/default.yaml \
+--output example/output/demo
+```

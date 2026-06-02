@@ -1,3 +1,10 @@
+"""Sample frames from a video at a fixed rate (``sample_fps``) to cut detection cost.
+
+Run:
+    python -m src.frame_sampler --video <video.mp4> --config <config.yaml> --output <dir>
+Writes images to ``<output>/sampled_frames/`` and metadata to
+``<output>/sampled_frames.json``.
+"""
 from __future__ import annotations
 
 import argparse

@@ -1,5 +1,5 @@
 video:
-  sample_fps: 0.5
+  sample_fps: 5
   output_dir: "examples/outputs"
 
 sampling:
@@ -18,4 +18,10 @@ detection:
     - bus
     # - motorcycle
     - truck
+
+temporal:
+  max_gap_seconds: 1.5
+  min_segment_duration_seconds: 1
+  min_evidence_frames: 2
+
     

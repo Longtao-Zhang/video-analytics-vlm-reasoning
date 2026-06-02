@@ -1,3 +1,9 @@
+"""Extract basic video metadata (FPS, frame count, duration, resolution).
+
+First stage of the pipeline. Run:
+    python -m src.video_loader --video <video.mp4> --output <dir>
+Writes metadata to ``<output>/metadata.json``.
+"""
 from __future__ import annotations
 
 import argparse
@@ -70,8 +76,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("examples/outputs/metadata.json"),
-        help="Path to save metadata JSON.",
+        default=Path("examples/outputs"),
+        help="Output directory to save metadata JSON.",
     )
     return parser.parse_args()
 
@@ -84,9 +90,11 @@ def main() -> None:
 
     args = parse_args()
     metadata = load_video_metadata(args.video)
-    save_json(metadata, args.output)
 
-    logger.info("Saved metadata to: %s", args.output)
+    output_json_path = args.output / "metadata.json"
+    save_json(metadata, output_json_path)
+
+    logger.info("Saved metadata to: %s", output_json_path)
 
 
 if __name__ == "__main__":

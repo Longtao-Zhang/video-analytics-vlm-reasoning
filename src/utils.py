@@ -1,3 +1,7 @@
+"""Shared I/O helpers: create directories, save JSON, load YAML config.
+
+Imported as a library; no command-line entry point.
+"""
 from __future__ import annotations
 
 import json
