@@ -30,7 +30,7 @@ Input Video
 - [x] Frame sampling
 - [x] Object detection
 - [X] Temporal aggregation
-- [ ] Event generation
+- [X] Event generation
 - [ ] VLM-assisted reasoning
 - [ ] Evaluation and benchmarking
 - [ ] FastAPI inference service
