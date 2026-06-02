@@ -29,7 +29,7 @@ Input Video
 - [x] Video metadata extraction
 - [x] Frame sampling
 - [x] Object detection
-- [ ] Temporal aggregation
+- [X] Temporal aggregation
 - [ ] Event generation
 - [ ] VLM-assisted reasoning
 - [ ] Evaluation and benchmarking
@@ -172,4 +172,41 @@ python -m src.temporal_aggregator \
 --detection-json example/output/demo/detection.json \
 --config configs/default.yaml \
 --output example/output/demo
+```
+
+### Event Candidate Generation
+
+The event generation module converts temporal object segments and frame-level detections into rule-based event candidates.
+
+```bash
+python -m src.event_generator \
+  --detections-json examples/outputs/demo/detections.json \
+  --temporal-segments-json examples/outputs/demo/temporal_segments.json \
+  --config configs/default.yaml \
+  --output examples/outputs/demo
+```
+
+The output is saved to:  
+```text
+examples/outputs/demo/event_candidates.json
+```
+
+Currently supported event types:  
+- person_present
+- vehicle_present
+- multiple_people_present
+- person_near_vehicle
+
+Each event candidate contains:  
+```JSON
+{
+  "event_id": "event_001",
+  "event_type": "person_present",
+  "start_time": 0.0,
+  "end_time": 6.0,
+  "duration_seconds": 6.0,
+  "objects_involved": ["person"],
+  "num_evidence_frames": 7,
+  "confidence": 0.84
+}
 ```
