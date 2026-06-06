@@ -1,0 +1,24 @@
+# Keep the build context small and never bake secrets / large media into the image.
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+
+# Secrets — pass DASHSCOPE_API_KEY at runtime (-e / compose), do not copy .env in.
+.env
+
+# Large sample videos and generated artifacts are not needed in the image
+# (the service receives videos via upload and writes to a temp dir).
+examples/input_videos/
+examples/outputs/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+
+# Docs and tests are not needed at runtime
+docs/
+tests/
+*.md

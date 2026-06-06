@@ -4,3 +4,8 @@ pyyaml
 numpy
 tqdm
 pytest
+openai
+python-dotenv
+fastapi
+uvicorn[standard]
+python-multipart

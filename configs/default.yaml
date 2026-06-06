@@ -25,21 +25,54 @@ temporal:
   min_evidence_frames: 2
 
 events:
-  enabled_event_types:
-    - person_present
-    - vehicle_present
-    - multiple_people_present
-    - person_near_vehicle
-  
+  # Level-2 safety event types emitted into safety_event_candidates.json.
+  # crowding_or_gathering / long_duration_vehicle_presence are scaffolded but
+  # disabled by default; enable here when ready.
+  enabled_safety_event_types:
+    - person_vehicle_proximity
+
+  risk_categories:
+    person_vehicle_proximity: collision_risk
+    crowding_or_gathering: crowding_risk
+    long_duration_vehicle_presence: operational_risk
+
+  # Interpretable risk scoring (ideas.md section 6).
+  scoring:
+    weights:
+      proximity: 0.4
+      duration: 0.3
+      confidence: 0.2
+      crowding: 0.1
+    duration_ref_seconds: 10.0
+    crowd_ref_people: 3
+    severity_bins:
+      low_max: 0.33
+      medium_max: 0.66
+
   vehicle_classes:
     - car
     - bus
     - truck
     - motorcycle
     - bicycle
-  
+
   min_event_duration_seconds: 0.5
   min_evidence_frames: 2
   person_vehicle_distance_threshold_pixels: 400
 
-    
+vlm:
+  mode: mock                       # mock | api
+  business_context: "warehouse safety monitoring"
+  max_evidence_frames: 3
+  api:
+    provider: dashscope
+    # The endpoint is resolved from the account region (read from DASHSCOPE_REGION):
+    #   ap-southeast-1 -> https://dashscope-intl.aliyuncs.com/compatible-mode/v1 (Singapore / international)
+    #   cn-beijing     -> https://dashscope.aliyuncs.com/compatible-mode/v1      (Beijing / China)
+    region_env: "DASHSCOPE_REGION"
+    # base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"  # optional explicit override
+    workspace_id_env: "DASHSCOPE_WORKSPACE_ID"   # optional; sent as a header only if set
+    model: "qwen3-vl-flash"
+    api_key_env: "DASHSCOPE_API_KEY"
+    temperature: 0.2
+    max_tokens: 800

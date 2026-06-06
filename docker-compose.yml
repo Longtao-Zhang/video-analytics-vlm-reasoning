@@ -1,0 +1,21 @@
+# Convenience wrapper so you don't have to remember the docker run flags.
+#
+#   docker compose up --build      # build + start
+#   docker compose down            # stop
+#
+# Compose auto-loads a local .env for the ${...} substitutions below, so the API
+# key is injected at runtime (never baked into the image).
+
+services:
+  safety-api:
+    build: .
+    image: safety-video
+    ports:
+      - "8000:8000"
+    environment:
+      # Only needed for --vlm-mode api; empty default keeps mock mode working.
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - DASHSCOPE_REGION=${DASHSCOPE_REGION:-ap-southeast-1}
+    # Optional: persist generated reports to the host for inspection.
+    # volumes:
+    #   - ./examples/outputs:/app/examples/outputs

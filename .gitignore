@@ -22,3 +22,4 @@ examples/input_videos/*.mkv
 *.onnx
 
 docs/memo.md
+docs/ideas.md
