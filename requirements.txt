@@ -9,3 +9,7 @@ python-dotenv
 fastapi
 uvicorn[standard]
 python-multipart
+# --- driving / VLA upgrade ---
+nuscenes-devkit          # nuScenes dataset API (pulls in pyquaternion, matplotlib, shapely)
+scipy                    # linear_sum_assignment (Hungarian) for tracking association
+pydantic                 # structured VLM reasoning schema

@@ -33,6 +33,10 @@ video → frame sampling → YOLO detection → temporal aggregation
   `api` uses Alibaba Cloud Model Studio (DashScope) Qwen-VL, degrading gracefully
   to mock on error.
 
+## Requirements
+**Python version**: `Python 3.10` or `Python 3.11`    
+(**Please do not use Python >= 3.12**)
+
 ## Quickstart
 
 ```bash

@@ -23,3 +23,5 @@ examples/input_videos/*.mkv
 
 docs/memo.md
 docs/ideas.md
+docs/turning_jd.md
+docs/docs/nuscenes_setup.md
