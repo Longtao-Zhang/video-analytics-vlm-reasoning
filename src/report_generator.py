@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 
 RISK_ORDER = {"low": 1, "medium": 2, "high": 3}
 
+# Statuses that count toward the headline risk and recommended actions.
+COUNTED_STATUSES = {"confirmed", "unverified"}
+
 EVENT_TYPE_LABELS = {
     "person_vehicle_proximity": "Person–Vehicle Proximity",
     "crowding_or_gathering": "Crowding / Gathering",
@@ -78,8 +81,10 @@ def classify_event(event: dict[str, Any]) -> dict[str, Any]:
     """Derive a report-level view of one event, applying the verification signal.
 
     status:
-        confirmed    -- reviewed and not rejected (counts toward headline risk)
+        confirmed    -- VLM verified == true (counts toward headline risk)
         dismissed    -- VLM verified == false (likely false positive)
+        unverified   -- VLM gave no usable verdict (API failure or malformed
+                        reply); kept in the headline risk, flagged for review
         not_reviewed -- no VLM reasoning attached (falls back to rule prior)
     """
     vlm = event.get("vlm_reasoning")
@@ -105,7 +110,9 @@ def classify_event(event: dict[str, Any]) -> dict[str, Any]:
             status = "dismissed"
             effective_risk = "low"
         else:
-            status = "confirmed"
+            # Unverified events stay in the headline risk: when the verifier
+            # fails we err towards over-reporting, not silently dropping.
+            status = "confirmed" if verified is True else "unverified"
             effective_risk = str(vlm.get("risk_level", severity_prior)).lower()
 
     if effective_risk not in RISK_ORDER:
@@ -136,10 +143,10 @@ def aggregate_overall_risk(
 ) -> tuple[str, str]:
     """Compute the video-level overall risk and a one-line rationale.
 
-    Overall risk = the highest effective risk among confirmed (non-dismissed)
-    events. If nothing is confirmed, the video is reported as low risk.
+    Overall risk = the highest effective risk among events that were not
+    dismissed (confirmed + unverified). If there are none, the video is low risk.
     """
-    confirmed = [e for e in classified if e["status"] == "confirmed"]
+    confirmed = [e for e in classified if e["status"] in COUNTED_STATUSES]
     if not confirmed:
         return "low", (
             "No safety events were confirmed by VLM reasoning "
@@ -150,9 +157,12 @@ def aggregate_overall_risk(
     overall = top["effective_risk_level"]
     n_top = sum(1 for e in confirmed if e["effective_risk_level"] == overall)
     rationale = (
-        f"Driven by {n_top} confirmed {overall}-risk event(s); highest is "
-        f"{top['event_type_label']} at {top['time_window']}."
+        f"Driven by {n_top} {overall}-risk event(s) not dismissed by the VLM; "
+        f"highest is {top['event_type_label']} at {top['time_window']}."
     )
+    if any(e["status"] == "unverified" for e in confirmed):
+        rationale += " Some events have no VLM verdict and need human review."
+
     return overall, rationale
 
 
@@ -160,7 +170,7 @@ def dedup_actions(classified: list[dict[str, Any]]) -> list[str]:
     """Collect unique recommended actions from confirmed events, in time order."""
     actions: list[str] = []
     for e in sorted(classified, key=lambda x: x["start_time"]):
-        if e["status"] != "confirmed":
+        if e["status"] not in COUNTED_STATUSES:
             continue
         action = (e["recommended_action"] or "").strip()
         if action and action not in actions:
@@ -183,15 +193,19 @@ def build_report(
 
     num_confirmed = sum(1 for e in classified if e["status"] == "confirmed")
     num_dismissed = sum(1 for e in classified if e["status"] == "dismissed")
+    num_unverified = sum(1 for e in classified if e["status"] == "unverified")
 
     contributing_factors = [
-        f"{e['event_type_label']} ({e['effective_risk_level']}) at {e['time_window']}"
+        f"{e['event_type_label']} ({e['effective_risk_level']}"
+        f"{', unverified' if e['status'] == 'unverified' else ''}) at {e['time_window']}"
         for e in classified
-        if e["status"] == "confirmed"
+        if e["status"] in COUNTED_STATUSES
     ]
 
     technical_notes: dict[str, Any] = {
         "reasoning_mode": data.get("reasoning_mode"),
+        "num_api_succeeded": data.get("num_api_succeeded"),
+        "num_fallback": data.get("num_fallback"),
         "pipeline": (
             "frame sampling -> YOLO object detection -> temporal aggregation -> "
             "rule-based safety event generation -> VLM-assisted reasoning"
@@ -211,6 +225,7 @@ def build_report(
         "num_candidate_events": len(classified),
         "num_confirmed_events": num_confirmed,
         "num_dismissed_events": num_dismissed,
+        "num_unverified_events": num_unverified,
         "contributing_factors": contributing_factors,
         "recommended_actions": dedup_actions(classified),
         "technical_notes": technical_notes,
@@ -220,7 +235,7 @@ def build_report(
 
 def render_markdown(report: dict[str, Any]) -> str:
     """Render the structured report into a business-readable Markdown document."""
-    confirmed = [e for e in report["events"] if e["status"] == "confirmed"]
+    confirmed = [e for e in report["events"] if e["status"] in COUNTED_STATUSES]
     dismissed = [e for e in report["events"] if e["status"] == "dismissed"]
 
     lines: list[str] = []
@@ -237,8 +252,9 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(
         f"The system analyzed `{report.get('video_name', 'the video')}` and generated "
         f"{report['num_candidate_events']} candidate safety event(s). "
-        f"{report['num_confirmed_events']} were confirmed by VLM-assisted reasoning "
-        f"and {report['num_dismissed_events']} dismissed as likely false positive(s). "
+        f"{report['num_confirmed_events']} were confirmed by VLM-assisted reasoning, "
+        f"{report['num_dismissed_events']} dismissed as likely false positive(s) "
+        f"and {report.get('num_unverified_events', 0)} left without a VLM verdict. "
         f"The overall safety risk is assessed as **{report['overall_risk_level']}** "
         f"({report['overall_risk_rationale']})"
     )
@@ -253,7 +269,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         for e in confirmed:
             lines.append(
                 f"| {e['time_window']} | {md_cell(e['event_type_label'])} | "
-                f"{e['effective_risk_level']} | {md_cell(e['description'])} | "
+                f"{e['effective_risk_level']}"
+                f"{' (unverified)' if e['status'] == 'unverified' else ''} | "
+                f"{md_cell(e['description'])} | "
                 f"{md_cell(e['recommended_action'])} |"
             )
     else:
@@ -306,6 +324,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     if notes.get("sample_fps") is not None:
         lines.append(f"- Frame sampling: {notes['sample_fps']} FPS")
     lines.append(f"- Reasoning: {notes.get('reasoning_mode')}")
+    if notes.get("num_fallback"):
+        lines.append(
+            f"- VLM API fallbacks: {notes['num_fallback']} event(s) used template "
+            "text because the API call failed; treat those as unverified."
+        )
     lines.append(
         "- Disclaimer: this is an automated decision-support prototype, not a "
         "certified safety system. Findings should be confirmed by a human reviewer."
