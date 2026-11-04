@@ -56,7 +56,10 @@ python -m src.sampling_benchmark \
   --output examples/outputs/benchmarks/berlin_tower
 ```
 
-**Result** — `berlin_tower_3840_2160_30fps.mp4`, YOLOv8n, CPU (macOS):
+**Result** — `berlin_tower_3840_2160_30fps.mp4` (12 s public 4K street clip with
+pedestrians and cars; not redistributed in this repo), YOLOv8n, CPU (macOS).
+Measured before the proximity rule was changed to emit one event per continuous
+episode (gap <= 1.5 s); rerun the benchmark to refresh the event counts.
 
 | FPS | Sampled frames | Detections | Segments | Safety events | Detect (s) | Total (s) | Frames/s |
 |---|---|---|---|---|---|---|---|
@@ -76,10 +79,13 @@ python -m src.sampling_benchmark \
   this particular clip the "true" recall is 0. The point stands as a method: recall
   of *candidates* is sampling-sensitive and saturates.)
 
-**Conclusion:** ~5 FPS is the practical balance between event recall and inference
-cost for near-real-time safety monitoring; 10 FPS roughly doubles cost without
-additional events on this footage. (Validate per-site, since fast-moving forklifts
-may need higher rates.)
+**Conclusion (single clip, so indicative only):** on this 12-second clip, 5 FPS was
+the lowest rate at which the proximity candidate appeared, and 10 FPS doubled
+detection cost without adding candidates. That makes 5 FPS a reasonable default
+to start from, not a validated operating point: it rests on one clip and one
+candidate (which the VLM then rejected), and fast-moving forklifts may need
+higher rates. VLM API cost is not included in these timings; it scales with the
+number of candidates sent for review.
 
 ---
 
