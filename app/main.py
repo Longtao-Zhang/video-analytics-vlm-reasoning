@@ -3,26 +3,16 @@
 Exposes the end-to-end pipeline (video -> safety report) over HTTP.
 
 Endpoints:
-    GET  /health   -- liveness check (worked example)
+    GET  /health   -- liveness check
     POST /analyze  -- upload a video, run the pipeline, return the safety report
 
 Run locally (from the repo root):
     uvicorn app.main:app --reload --port 8000
     # then open http://localhost:8000/docs for the interactive Swagger UI
 
-------------------------------------------------------------------------------
-LEARNING EXERCISE
-------------------------------------------------------------------------------
-/health is fully implemented as a worked example. Implement /analyze yourself by
-filling in the `# TODO(you)` block: this is the "deployment glue" that turns an
-uploaded file into a pipeline run and a JSON response. The response model
-(AnalyzeResponse) is given so you know the exact shape to return.
-
-Note on `def` vs `async def`: /analyze is a *sync* `def` on purpose. run_pipeline
-does heavy, blocking CPU work (YOLO); FastAPI runs sync endpoints in a worker
-thread, so it won't block the event loop. An `async def` here would freeze the
-whole server during inference.
-------------------------------------------------------------------------------
+/analyze is a sync ``def`` on purpose: run_pipeline does blocking CPU work
+(YOLO), and FastAPI runs sync endpoints in a worker thread so the event loop
+stays responsive.
 """
 from __future__ import annotations
 
@@ -75,7 +65,7 @@ class AnalyzeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# GET /health  (WORKED EXAMPLE — study this, then write /analyze)
+# GET /health
 # ---------------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:

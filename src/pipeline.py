@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Stage 1 — frame sampling  (WORKED EXAMPLE — study this pattern)
+# Stage 1 — frame sampling
 # ---------------------------------------------------------------------------
 def run_sampling(video_path: Path, config: dict[str, Any], output_dir: Path) -> Path:
     """Sample frames from the video and save sampled_frames.json.
@@ -185,7 +185,7 @@ def run_report(vlm_reasoning_json: Path, config: dict[str, Any], output_dir: Pat
 
 
 # ---------------------------------------------------------------------------
-# Orchestration  (complete — no need to edit, but read it to see the wiring)
+# Orchestration
 # ---------------------------------------------------------------------------
 def run_pipeline(
         video_path: Path,

@@ -6,7 +6,7 @@ reasoning block: scene description, safety risk, risk level, reasoning,
 recommended action and a confidence score. Results are written to
 vlm_event_reasoning.json.
 
-Design principle (see docs/ideas.md):
+Design principle:
     Rules generate candidate safety events; the VLM explains, verifies, and
     contextualizes them. The VLM never invents events from scratch -- it reasons
     over evidence the deterministic rules already produced.
