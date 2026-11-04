@@ -117,6 +117,29 @@ def collect_label_observations(
     
     return dict(observations)
 
+def split_by_time_gap(
+        items: list[dict[str, Any]],
+        max_gap_seconds: float,
+        time_key: str = "timestamp",
+) -> list[list[dict[str, Any]]]:
+    """Split time-sorted items into runs; a gap > ``max_gap_seconds`` starts a new run.
+
+    Shared by class-level aggregation here and by the safety rules in
+    ``src/event_generator.py``, so both use the same notion of "continuous".
+    """
+    if not items:
+        return []
+
+    runs: list[list[dict[str, Any]]] = [[items[0]]]
+    for item in items[1:]:
+        gap = float(item[time_key]) - float(runs[-1][-1][time_key])
+        if gap <= max_gap_seconds:
+            runs[-1].append(item)
+        else:
+            runs.append([item])
+    return runs
+
+
 def _build_segment(
         label: str,
         segment_index: int,
@@ -158,27 +181,7 @@ def merge_observations_into_segments(
         min_evidence_frames: int,
 ) -> list[dict[str, Any]]:
     """Merge the whole observations into temporal segments by max-gap"""
-    if not observations:
-        return []
-    
-    # To store different segments
-    raw_segments: list[list[dict[str, Any]]] = []
-    # Current working segments
-    current_segment: list[dict[str, Any]] = [observations[0]]
-
-    for obs in observations[1:]:
-        previous_timestamp = float(current_segment[-1]["timestamp"])
-        current_timestamp = float(obs["timestamp"])
-        gap = current_timestamp - previous_timestamp
-
-        if gap <= max_gap_seconds:
-            current_segment.append(obs) # counted into the same segment
-        else:
-            # Save current segment and start a new one
-            raw_segments.append(current_segment)
-            current_segment = [obs]
-    
-    raw_segments.append(current_segment)
+    raw_segments = split_by_time_gap(observations, max_gap_seconds)
 
     final_segments: list[dict[str, Any]] = []
 

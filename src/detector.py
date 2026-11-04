@@ -16,19 +16,20 @@ from pathlib import Path
 from typing import Any
 
 import cv2
-from ultralytics import YOLO
 
 from src.utils import load_config, save_json
 
 logger = logging.getLogger(__name__)
 
-def load_detector(model_name: str) -> YOLO:
-    """Load a YOLO dectector."""
+def load_detector(model_name: str) -> Any:
+    """Load a YOLO detector (imported lazily: ultralytics pulls in torch)."""
+    from ultralytics import YOLO
+
     logger.info("Loading YOLO model: %s", model_name)
     return YOLO(model_name)
 
 def load_sampled_frames(sampled_frames_json: Path) -> dict[str, Any]:
-    """Load samoled frame metadata"""
+    """Load sampled frame metadata."""
     if not sampled_frames_json.exists():
         raise FileNotFoundError(f"Sampled frames JSON not found: {sampled_frames_json}")
     
@@ -38,7 +39,7 @@ def load_sampled_frames(sampled_frames_json: Path) -> dict[str, Any]:
         return json.load(f)
 
 def run_detection_on_image(
-        model: YOLO,
+        model: Any,
         image_path: Path,
         confidence_threshold: float,
         target_classes: list[str] | None = None,

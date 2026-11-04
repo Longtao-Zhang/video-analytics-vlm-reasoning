@@ -41,6 +41,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from src.temporal_aggregator import split_by_time_gap
 from src.utils import load_config, save_json
 
 logger = logging.getLogger(__name__)
@@ -136,13 +137,15 @@ def generate_person_vehicle_proximity_events(
     min_evidence_frames: int,
     scoring_config: dict[str, Any],
     risk_category: str,
+    max_gap_seconds: float = 1.5,
 ) -> list[dict[str, Any]]:
     """Generate person_vehicle_proximity safety events from frame-level detections.
 
     A frame is evidence if at least one person bbox center is within
-    ``distance_threshold_pixels`` of at least one vehicle bbox center. All such
-    frames are merged into a single proximity candidate, scored with an
-    interpretable severity prior.
+    ``distance_threshold_pixels`` of at least one vehicle bbox center. Evidence
+    frames are split into continuous episodes (gap <= ``max_gap_seconds``); each
+    episode with at least ``min_evidence_frames`` frames becomes one candidate,
+    scored with an interpretable severity prior.
     """
     evidence_frames: list[dict[str, Any]] = []
 
@@ -205,22 +208,45 @@ def generate_person_vehicle_proximity_events(
                 }
             )
 
-    if len(evidence_frames) < min_evidence_frames:
-        return []
+    # Split evidence into continuous episodes so that two separate approaches
+    # (e.g. at 0:05 and 5:00) become two events instead of one long one.
+    episodes = split_by_time_gap(evidence_frames, max_gap_seconds)
 
-    start_time = float(evidence_frames[0]["timestamp"])
-    end_time = float(evidence_frames[-1]["timestamp"])
+    events: list[dict[str, Any]] = []
+    for episode in episodes:
+        if len(episode) < min_evidence_frames:
+            continue
+        events.append(
+            _build_proximity_event(
+                episode=episode,
+                scoring_config=scoring_config,
+                distance_threshold_pixels=distance_threshold_pixels,
+                max_gap_seconds=max_gap_seconds,
+                risk_category=risk_category,
+            )
+        )
+    return events
+
+
+def _build_proximity_event(
+    episode: list[dict[str, Any]],
+    scoring_config: dict[str, Any],
+    distance_threshold_pixels: float,
+    max_gap_seconds: float,
+    risk_category: str,
+) -> dict[str, Any]:
+    """Summarize one continuous proximity episode into a scored event candidate."""
+    start_time = float(episode[0]["timestamp"])
+    end_time = float(episode[-1]["timestamp"])
     duration_seconds = end_time - start_time
-    mean_confidence = sum(f["mean_confidence"] for f in evidence_frames) / len(
-        evidence_frames
-    )
+    mean_confidence = sum(f["mean_confidence"] for f in episode) / len(episode)
     min_distance_px = min(
         float(pair["center_distance_pixels"])
-        for f in evidence_frames
+        for f in episode
         for pair in f["matched_pairs"]
     )
-    max_people = max(int(f["num_people_near_vehicle"]) for f in evidence_frames)
-    frame_paths = [f["image_path"] for f in evidence_frames]
+    max_people = max(int(f["num_people_near_vehicle"]) for f in episode)
+    frame_paths = [f["image_path"] for f in episode]
 
     metrics = {
         "min_distance_px": min_distance_px,
@@ -234,37 +260,37 @@ def generate_person_vehicle_proximity_events(
         distance_threshold_pixels=distance_threshold_pixels,
     )
 
-    return [
-        {
-            "event_id": "safety_event_person_vehicle_proximity_001",
-            "event_type": "person_vehicle_proximity",
-            "risk_category": risk_category,
-            "start_time": start_time,
-            "end_time": end_time,
-            "duration_seconds": duration_seconds,
-            "objects_involved": ["person", "vehicle"],
-            "severity_prior": severity_prior,
-            "risk_score": risk_score,
-            "score_breakdown": score_breakdown,
-            "rule_triggered": "person_vehicle_distance_below_threshold",
-            "candidate_reason": (
-                f"A person and a vehicle were detected in spatial proximity "
-                f"(minimum center distance {min_distance_px:.1f}px) across "
-                f"{len(evidence_frames)} sampled frames."
-            ),
-            "evidence": {
-                "num_frames": len(evidence_frames),
-                "min_distance_px": round(min_distance_px, 2),
-                "mean_confidence": round(mean_confidence, 4),
-                "frame_paths": frame_paths,
-            },
-            "evidence_frames": evidence_frames,
-            "parameters": {
-                "distance_threshold_pixels": distance_threshold_pixels,
-            },
-            "requires_vlm_review": True,
-        }
-    ]
+    return {
+        # Placeholder; final time-ordered IDs are set by assign_event_ids().
+        "event_id": "safety_event_person_vehicle_proximity",
+        "event_type": "person_vehicle_proximity",
+        "risk_category": risk_category,
+        "start_time": start_time,
+        "end_time": end_time,
+        "duration_seconds": duration_seconds,
+        "objects_involved": ["person", "vehicle"],
+        "severity_prior": severity_prior,
+        "risk_score": risk_score,
+        "score_breakdown": score_breakdown,
+        "rule_triggered": "person_vehicle_distance_below_threshold",
+        "candidate_reason": (
+            f"A person and a vehicle were detected in spatial proximity "
+            f"(minimum center distance {min_distance_px:.1f}px) across "
+            f"{len(episode)} sampled frames."
+        ),
+        "evidence": {
+            "num_frames": len(episode),
+            "min_distance_px": round(min_distance_px, 2),
+            "mean_confidence": round(mean_confidence, 4),
+            "frame_paths": frame_paths,
+        },
+        "evidence_frames": episode,
+        "parameters": {
+            "distance_threshold_pixels": distance_threshold_pixels,
+            "max_gap_seconds": max_gap_seconds,
+        },
+        "requires_vlm_review": True,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +423,7 @@ def _rule_person_vehicle_proximity(
         min_evidence_frames=int(event_config["min_evidence_frames"]),
         scoring_config=event_config["scoring"],
         risk_category=event_config["risk_categories"]["person_vehicle_proximity"],
+        max_gap_seconds=float(event_config.get("proximity_max_gap_seconds", 1.5)),
     )
 
 
