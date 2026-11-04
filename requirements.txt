@@ -1,15 +1,13 @@
 ultralytics
-opencv-python-headless   # headless: no GUI calls in this repo; avoids dual-cv2 conflict with nuscenes-devkit
+opencv-python
 pyyaml
 numpy
 tqdm
 pytest
+httpx            # FastAPI TestClient (tests only)
 openai
 python-dotenv
 fastapi
 uvicorn[standard]
 python-multipart
-# --- driving / VLA upgrade ---
-nuscenes-devkit          # nuScenes dataset API (pulls in pyquaternion, matplotlib, shapely)
-scipy                    # linear_sum_assignment (Hungarian) for tracking association
-pydantic                 # structured VLM reasoning schema
+pydantic
