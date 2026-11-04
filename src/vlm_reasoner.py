@@ -6,7 +6,7 @@ reasoning block: scene description, safety risk, risk level, reasoning,
 recommended action and a confidence score. Results are written to
 vlm_event_reasoning.json.
 
-Design principle (see docs/ideas.md):
+Design principle:
     Rules generate candidate safety events; the VLM explains, verifies, and
     contextualizes them. The VLM never invents events from scratch -- it reasons
     over evidence the deterministic rules already produced.
@@ -238,6 +238,29 @@ def parse_vlm_json(text: str) -> dict[str, Any]:
     return json.loads(text[start : end + 1])
 
 
+_TRUE_STRINGS = {"true", "yes", "1"}
+_FALSE_STRINGS = {"false", "no", "0"}
+
+
+def parse_verified(value: Any) -> bool | None:
+    """Strictly interpret the VLM's ``verified`` field.
+
+    Only real booleans or unambiguous strings count. Anything else (missing,
+    null, "maybe", a number) returns None = "no usable verdict", so a malformed
+    reply can neither silently confirm nor silently dismiss an event.
+    (``bool("false")`` is True in Python, which is why this is not a plain cast.)
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in _TRUE_STRINGS:
+            return True
+        if v in _FALSE_STRINGS:
+            return False
+    return None
+
+
 def normalize_vlm_block(parsed: dict[str, Any], model: str) -> dict[str, Any]:
     """Coerce a parsed VLM reply into the canonical reasoning block."""
     risk_level = str(parsed.get("risk_level", "medium")).lower()
@@ -251,7 +274,7 @@ def normalize_vlm_block(parsed: dict[str, Any], model: str) -> dict[str, Any]:
     confidence = max(0.0, min(1.0, confidence))
 
     return {
-        "verified": bool(parsed.get("verified", True)),
+        "verified": parse_verified(parsed.get("verified")),
         "scene_description": str(parsed.get("scene_description", "")),
         "safety_risk": str(parsed.get("safety_risk", "")),
         "risk_level": risk_level,
@@ -394,6 +417,8 @@ def reason_about_events(
 
     reasoned_events: list[dict[str, Any]] = []
     num_reviewed = 0
+    num_api_succeeded = 0
+    num_fallback = 0
 
     for event in data.get("events", []):
         merged = dict(event)
@@ -411,6 +436,7 @@ def reason_about_events(
                 # api requested but client unavailable -> graceful fallback
                 vlm_block["verified"] = None
                 vlm_block["reasoning_mode"] = "api_error_fallback"
+                num_fallback += 1
         else:
             image_paths = select_frame_paths(event, max_frames)
             try:
@@ -422,6 +448,7 @@ def reason_about_events(
                     image_paths=image_paths,
                     api_config=api_config,
                 )
+                num_api_succeeded += 1
             except Exception as exc:  # noqa: BLE001 - one bad call must not break the run
                 logger.warning(
                     "VLM API reasoning failed for %s (%s); falling back to mock.",
@@ -431,11 +458,21 @@ def reason_about_events(
                 vlm_block = mock_reasoning_for_event(event, business_context)
                 vlm_block["verified"] = None
                 vlm_block["reasoning_mode"] = "api_error_fallback"
+                num_fallback += 1
 
         merged["vlm_reasoning"] = {"event_id": event["event_id"], **vlm_block}
         reasoned_events.append(merged)
 
-    reasoning_mode = "mock" if (mode == "mock" or client is None) else f"api:{model}"
+    # Report what actually ran, not what was requested: a run where some or all
+    # API calls failed must not be labelled as a clean API run.
+    if mode == "mock":
+        reasoning_mode = "mock"
+    elif num_fallback == 0:
+        reasoning_mode = f"api:{model}"
+    elif num_api_succeeded == 0:
+        reasoning_mode = "api_error_fallback"
+    else:
+        reasoning_mode = f"api:{model}+partial_fallback"
 
     return {
         "video_name": data.get("video_name"),
@@ -444,6 +481,8 @@ def reason_about_events(
         "reasoning_mode": reasoning_mode,
         "num_events": len(reasoned_events),
         "num_reviewed_events": num_reviewed,
+        "num_api_succeeded": num_api_succeeded,
+        "num_fallback": num_fallback,
         "events": reasoned_events,
     }
 

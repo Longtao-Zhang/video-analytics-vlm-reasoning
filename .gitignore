@@ -1,4 +1,4 @@
-# Do not git viedes, weights and outputs ect. to GitHub
+# Keep videos, model weights and generated outputs out of git
 __pycache__/
 *.pyc
 
@@ -23,7 +23,6 @@ examples/input_videos/*.mkv
 
 docs/memo.md
 docs/ideas.md
-docs/turning_jd.md
-docs/docs/nuscenes_setup.md
+docs/private/
 
 data/

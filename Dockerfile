@@ -38,16 +38,14 @@ ARG PIP_INDEX_URL=https://pypi.org/simple
 RUN pip install --no-cache-dir --timeout 120 --retries 5 --index-url "$PIP_INDEX_URL" -r requirements.txt
 
 # --- Application layer -------------------------------------------------------
-# Now copy the rest of the project (src/, app/, configs/, yolov8n.pt weights).
+# Now copy the rest of the project (src/, app/, configs/). If yolov8n.pt is not
+# present, Ultralytics downloads it on the first request (needs network access).
 # .dockerignore keeps out .venv, .env, big example videos, and generated outputs.
 COPY . .
 
 # The API listens on 8000 inside the container; map it with `-p 8000:8000`.
 EXPOSE 8000
 
-# TODO(you): start the API server with uvicorn against `app.main:app`.
-#   Critical gotcha: bind to host 0.0.0.0 (NOT 127.0.0.1) or the port is not
-#   reachable from outside the container.
-#   Use the exec form (a JSON array), e.g.:  CMD ["uvicorn", "...", "--host", ...]
-# CMD [...]
+# Bind to 0.0.0.0 (not 127.0.0.1) so the port is reachable from outside the
+# container; exec form so uvicorn receives signals directly.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

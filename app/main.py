@@ -3,36 +3,38 @@
 Exposes the end-to-end pipeline (video -> safety report) over HTTP.
 
 Endpoints:
-    GET  /health   -- liveness check (worked example)
+    GET  /health   -- liveness check
     POST /analyze  -- upload a video, run the pipeline, return the safety report
 
 Run locally (from the repo root):
     uvicorn app.main:app --reload --port 8000
     # then open http://localhost:8000/docs for the interactive Swagger UI
 
-------------------------------------------------------------------------------
-LEARNING EXERCISE
-------------------------------------------------------------------------------
-/health is fully implemented as a worked example. Implement /analyze yourself by
-filling in the `# TODO(you)` block: this is the "deployment glue" that turns an
-uploaded file into a pipeline run and a JSON response. The response model
-(AnalyzeResponse) is given so you know the exact shape to return.
+Upload handling:
+    - The client-supplied filename is never used as a path: the upload is saved
+      under a random name inside a fresh temp dir (no path traversal).
+    - Uploads larger than ``service.max_upload_mb`` are rejected with 413.
+    - ``vlm_mode=api`` spends paid API quota, so it is only enabled when
+      SERVICE_API_TOKEN is set, and requires ``Authorization: Bearer <token>``.
+      ``mock`` mode stays open for demos.
 
-Note on `def` vs `async def`: /analyze is a *sync* `def` on purpose. run_pipeline
-does heavy, blocking CPU work (YOLO); FastAPI runs sync endpoints in a worker
-thread, so it won't block the event loop. An `async def` here would freeze the
-whole server during inference.
-------------------------------------------------------------------------------
+/analyze is a sync ``def`` on purpose: run_pipeline does blocking CPU work
+(YOLO), and FastAPI runs sync endpoints in a worker thread so the event loop
+stays responsive.
 """
 from __future__ import annotations
 
 import logging
+import os
+import re
+import secrets
 import shutil
 import tempfile
+import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, BinaryIO, Optional
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from src.utils import load_config
@@ -49,11 +51,14 @@ CONFIG_PATH = Path("configs/default.yaml")
 config = load_config(CONFIG_PATH)
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+MAX_UPLOAD_BYTES = int(float(config.get("service", {}).get("max_upload_mb", 200)) * 1024 * 1024)
+API_TOKEN_ENV = "SERVICE_API_TOKEN"
+_COPY_CHUNK = 1024 * 1024
 
 app = FastAPI(
     title="Warehouse Safety Video Intelligence API",
     description="Upload an operational video; get a structured safety report back.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 
@@ -71,11 +76,50 @@ class AnalyzeResponse(BaseModel):
     num_candidate_events: int
     num_confirmed_events: int
     num_dismissed_events: int
+    num_unverified_events: int
     report: dict[str, Any]  # the full safety_report.json payload
 
 
+class UploadTooLarge(Exception):
+    """Raised when an upload exceeds MAX_UPLOAD_BYTES."""
+
+
 # ---------------------------------------------------------------------------
-# GET /health  (WORKED EXAMPLE — study this, then write /analyze)
+# Helpers
+# ---------------------------------------------------------------------------
+def display_name(filename: str | None, max_len: int = 100) -> str:
+    """A log/response-safe version of the client filename (never used as a path)."""
+    name = Path((filename or "").replace("\\", "/")).name
+    name = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:max_len]
+    return name or "upload"
+
+
+def copy_limited(src: BinaryIO, dst: BinaryIO, max_bytes: int) -> int:
+    """Stream ``src`` into ``dst``; raise UploadTooLarge past ``max_bytes``."""
+    total = 0
+    while chunk := src.read(_COPY_CHUNK):
+        total += len(chunk)
+        if total > max_bytes:
+            raise UploadTooLarge
+        dst.write(chunk)
+    return total
+
+
+def check_api_mode_allowed(authorization: str | None) -> None:
+    """Gate the paid VLM API mode behind a bearer token."""
+    expected = os.getenv(API_TOKEN_ENV)
+    if not expected:
+        raise HTTPException(
+            status_code=403,
+            detail=f"vlm_mode=api is disabled: set {API_TOKEN_ENV} on the server to enable it.",
+        )
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not secrets.compare_digest(token.strip(), expected):
+        raise HTTPException(status_code=401, detail="Missing or invalid bearer token.")
+
+
+# ---------------------------------------------------------------------------
+# GET /health
 # ---------------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
@@ -90,40 +134,48 @@ def health() -> HealthResponse:
 def analyze(
     video: UploadFile = File(..., description="Video file to analyze."),
     vlm_mode: str = Query("mock", pattern="^(mock|api)$", description="VLM mode."),
+    authorization: Optional[str] = Header(None, description="Bearer token (api mode only)."),
 ) -> AnalyzeResponse:
-    """Run the full pipeline on an uploaded video and return the safety report.
-    """
-    logger.info(f"Received analyze request for video: {video.filename}, mode: {vlm_mode}")
+    """Run the full pipeline on an uploaded video and return the safety report."""
+    name = display_name(video.filename)
+    logger.info("Received analyze request: video=%r mode=%s", name, vlm_mode)
 
-    # 1. Validate the upload:
-    suffix = Path(video.filename or "").suffix.lower()
+    if vlm_mode == "api":
+        check_api_mode_allowed(authorization)
+
+    suffix = Path(name).suffix.lower()
     if suffix not in VIDEO_SUFFIXES:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}.")
-    
-    # 2. Make a temp working dir
-    work_dir = Path(tempfile.mkdtemp())
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix or '(none)'}.")
 
+    work_dir = Path(tempfile.mkdtemp(prefix="safety_"))
     try:
-        # 3 Persist the upload to disk
-        video_path = work_dir / (video.filename or "upload.mp4")
-        with open(video_path, "wb") as f:
-            shutil.copyfileobj(video.file, f)
-        
-        # 4. Run the pipeline
+        # Random server-side name: the client filename never touches the filesystem.
+        video_path = work_dir / f"{uuid.uuid4().hex}{suffix}"
+        try:
+            with open(video_path, "wb") as f:
+                copy_limited(video.file, f, MAX_UPLOAD_BYTES)
+        except UploadTooLarge:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Upload exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            )
+
         report = run_pipeline(video_path=video_path, config=config,
                               output_dir=work_dir, vlm_mode=vlm_mode)
-        
-        # 5. Return reports
-        logger.info(f"Video processed successfully: {video.filename}")
+
+        # Do not leak server-side temp paths; show the client's (sanitized) name.
+        report["video_name"] = name
+        report.pop("video_path", None)
+
+        logger.info("Video processed: %r overall_risk=%s", name, report.get("overall_risk_level"))
         return AnalyzeResponse(
-            video_name=video.filename,
+            video_name=name,
             overall_risk_level=report.get("overall_risk_level", "UNKNOWN"),
             num_candidate_events=report.get("num_candidate_events", 0),
             num_confirmed_events=report.get("num_confirmed_events", 0),
             num_dismissed_events=report.get("num_dismissed_events", 0),
+            num_unverified_events=report.get("num_unverified_events", 0),
             report=report,
         )
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
-        logger.info(f"Work directory cleaned up.")
-    
