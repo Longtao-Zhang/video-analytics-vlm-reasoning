@@ -16,6 +16,8 @@ services:
       # Only needed for --vlm-mode api; empty default keeps mock mode working.
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - DASHSCOPE_REGION=${DASHSCOPE_REGION:-ap-southeast-1}
+      # Required to enable vlm_mode=api on /analyze (empty = api mode disabled).
+      - SERVICE_API_TOKEN=${SERVICE_API_TOKEN:-}
     # Optional: persist generated reports to the host for inspection.
     # volumes:
     #   - ./examples/outputs:/app/examples/outputs
